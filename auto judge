@@ -36,18 +36,6 @@ async def gpt(prompt):
     # return flask.Response(data(), mimetype="text/event-stream")
     return data()
 
-
-async def sql():
-    while True:
-        try:
-            # 尝试连接到数据库
-            conn = pymysql.connect( host="192.168.5.145", port=3306, dbname="python", user='chatgpt', password="xwg31415926...")
-            print("成功连接到数据库")
-            return conn  # 返回连接对象
-        except pymysql.Error as e:
-            print(f"连接错误: {e}")
-            print("正在重试连接...")
-            time.sleep(1)
 @app.post('/')
 async def is_true(request:Request):
     totle = []  #存放多次评论
@@ -152,7 +140,7 @@ async def is_true(request:Request):
     while m<=3:
         try:
             # 尝试连接到数据库
-            conn = pymysql.connect(host="192.168.5.145", port=3306, database="python", user='chatgpt', password="xwg31415926...")
+            conn = pymysql.connect(host="192.168.5.145", port=3306, database="python", user='chatgpt', password="xxxxxx")
             print("正在连接数据库")
             cursor = conn.cursor()
             cursor.execute(f'select count(*) from 自动评论 where id="{userid}"')
