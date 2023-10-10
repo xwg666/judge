@@ -1,0 +1,180 @@
+import datetime
+import math
+import re
+import time
+
+import openai
+from fastapi import FastAPI,Request
+import uvicorn
+import pymysql
+
+messages = []
+app= FastAPI()
+async def gpt(prompt):
+    openai.api_key = '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'
+    # prompt = request.query_params.get('question')
+    messages = [{'role': 'user', "content": prompt}]
+    rsp = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo-0613",
+        # model="text-davinci-003",
+        messages=messages,
+        temperature=0.95,
+        top_p=0.8,
+        max_tokens=2000,
+        stream=True
+    )
+    def data():
+        final_text = ''
+        for info in rsp:
+            if info['choices'][0]['finish_reason'] != 'stop':
+                final_text += info['choices'][0]['delta']['content']
+            else:
+                final_text += ' '
+            # yield "data: %s\n\n" % final_text.replace('\n', '<br />')
+        print(final_text)
+        return final_text
+    # return flask.Response(data(), mimetype="text/event-stream")
+    return data()
+
+
+async def sql():
+    while True:
+        try:
+            # 尝试连接到数据库
+            conn = pymysql.connect( host="192.168.5.145", port=3306, dbname="python", user='chatgpt', password="xwg31415926...")
+            print("成功连接到数据库")
+            return conn  # 返回连接对象
+        except pymysql.Error as e:
+            print(f"连接错误: {e}")
+            print("正在重试连接...")
+            time.sleep(1)
+@app.post('/')
+async def is_true(request:Request):
+    totle = []  #存放多次评论
+    ll,count=0,0
+    question=request.query_params.get('question').replace(' ','').strip()
+    num=int(request.query_params.get('num',5))
+    userid=request.query_params.get('id')
+    print(question,userid)
+    judge = '判断下面语句，如果有语法不通顺,意思不理解或者语法错误等等，则返回"FALSE"；否则，返回"TRUE"。语句如下：' + question
+    result = await gpt(judge)
+    print('result', result)
+    if 'FALSE' in result or 'false' in result:
+        return 'false,结束调用'
+    else:
+        #分批次生成评论：
+        try:
+            if 0<num<=20:
+                n=1
+                count=num
+            elif 20<num<=100:
+                n=math.ceil(num/20)
+                count=round(num/n)
+            else:
+                return '一次不能超过100条'
+            print(n,count)
+            m=1
+            while True:
+                if m<=n:
+                    print('m，n的值：',m,n)
+                    if ll<num:
+                        rigth_answer=(f'对下面语句像推特一样进行{count}条评论，评论风格随机选择：幽默，恶搞，严肃，认可，反对，疑惑等,最后放在一个列表里输出，不需要输出其他。'
+                                      f'严格遵守下面的格式样例：["评论内容1","评论内容2",...]。需要评论的语句如下：')+question
+                        print(rigth_answer)
+                        if 'TRUE' in result or 'true' in result:
+                            print('生成评论：')
+                            rs=await gpt(rigth_answer)
+                            print('生成原始内容：',rs)
+                            rs=rs.strip().replace('\n','')
+                            word=['幽默','恶搞','严肃','认可','反对','疑惑','评论']
+                            for w in word:
+                                if w in rs:
+                                    rs=rs.replace(w,'')
+                            #检测生成结果是否多列表 (偶尔出现) 如['aaa']['bbb]
+                            sm=0
+                            for k in rs:
+                                if k==']':
+                                    sm+=1
+                            if sm>2:
+                                rs=rs.replace(']',',')
+
+                            #分割字符串加入列表
+                            ls = rs.split(",")
+                            for s in ls:
+                                if s not in totle:
+                                    totle.append(s.replace("[",'').replace("]",'').replace("'",'').replace("‘’",'').replace('“”',''))
+                            print('aaa',totle,ll)
+                            ll = len(totle)
+                            print('a列表长度',ll)
+                            m+=1
+                    else:
+                        break
+                else:
+                    count = num - ll
+                    print("剩余评论数：", count)
+                    if 5<=count<=20:
+                        rigth_answer = f'对下面语句像推特一样进行{count}条评论，评论风格随机选择：幽默，恶搞，严肃，认可，反对，疑惑等,最后放在一个列表里输出，不需要输出其他。严格遵守下面的格式样例：["评论内容1","评论内容2",...]。需要评论的语句如下：' + question
+                        rs = await gpt(rigth_answer)
+                        print('生成原始内容：', rs)
+                        rs = rs.strip().replace('\n', '')
+                        word = ['幽默', '恶搞', '严肃', '认可', '反对', '疑惑', '评论']
+                        for w in word:
+                            if w in rs:
+                                rs = rs.replace(w, '')
+
+                        # 检测生成结果是否多列表 (偶尔出现) ['aaa']['bbb]
+                        sm = 0
+                        for k in rs:
+                            if k == ']':
+                                sm += 1
+                        if sm > 2:
+                            rs = rs.replace(']', ',')  #将]替换为逗号，方便分割
+
+                        # 分割字符串加入列表
+                        ls = rs.split(",")
+                        for s in ls:
+                            if s not in totle:
+                                totle.append(s.replace("[", '').replace("]", '').replace("'", '').replace("‘’", '').replace('“”', ''))
+                        print('bbb', totle, ll)
+                        ll = len(totle)
+                        print('b列表长度',ll)
+                        break
+                    else:
+                        break
+        except:
+            print('分批次评论发生错误！')
+            pass
+
+    totle=str(totle).replace("'","").replace('"',"").replace(' ','').strip()
+    print('写入数据库的最终结果：',ll,totle)
+
+    m=1
+    while m<=3:
+        try:
+            # 尝试连接到数据库
+            conn = pymysql.connect(host="192.168.5.145", port=3306, database="python", user='chatgpt', password="xwg31415926...")
+            print("正在连接数据库")
+            cursor = conn.cursor()
+            cursor.execute(f'select count(*) from 自动评论 where id="{userid}"')
+            if cursor.fetchone()[0]==1:
+                print("更新数据库")
+                cursor.execute(f'update 自动评论 set content="{question}",judge="{str(totle)}",judge_len="{ll}",date_time="{datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}" where id="{userid}"')
+                conn.commit()
+            else:
+                print("插入数据库")
+                cursor.execute(f'insert into 自动评论(id,content,judge,judge_len,date_time) values("{userid}","{question}","{str(totle)}","{ll}","{datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}")')
+                conn.commit()
+
+            cursor.close()
+            break
+
+        except pymysql.Error as e:
+            print(f"连接错误: {e}")
+            print("正在重试连接...")
+            time.sleep(1)
+            m+=1
+    return totle
+
+
+if __name__ == '__main__':
+    uvicorn.run(app, host='0.0.0.0', port=6000)
